@@ -22,8 +22,15 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
+import com.example.inventory.data.Item
 import com.example.inventory.databinding.FragmentAddItemBinding
+import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * Fragment to add or update an item in the Inventory database.
@@ -38,13 +45,53 @@ class AddItemFragment : Fragment() {
     private var _binding: FragmentAddItemBinding? = null
     private val binding get() = _binding!!
 
+    private val viewModel: ItemViewModel by activityViewModels {
+        ItemViewModelFactory(getDatabase().itemDao())
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
+    ): View {
         _binding = FragmentAddItemBinding.inflate(inflater, container, false)
         return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        if (navigationArgs.itemId != -1) {
+            lifecycleScope.launch {
+                val item = viewModel.getItem(navigationArgs.itemId).first()
+                binding.apply {
+                    itemName.setText(item.itemName)
+                    itemPrice.setText(item.itemPrice.toString())
+                    itemCount.setText(item.itemQuantity.toString())
+                }
+            }
+        }
+        binding.saveAction.setOnClickListener {
+            val itemName = binding.itemName.text.toString()
+            val itemPrice = binding.itemPrice.text.toString().toDoubleOrNull() ?: 0.0
+            val itemQuantity = binding.itemCount.text.toString().toLongOrNull() ?: 0
+            val isValidated = itemName.isNotBlank() && itemPrice > 0 && itemQuantity > 0
+            if (isValidated) {
+                viewModel.let {
+                    val itemId = if (navigationArgs.itemId == -1) 0 else navigationArgs.itemId
+                    val item = Item(
+                        id = itemId,
+                        itemName = itemName,
+                        itemPrice = itemPrice,
+                        itemQuantity = itemQuantity,
+                    )
+                    if (itemId == 0) it.insertItem(item) else it.updateItem(item)
+                }
+                val action = AddItemFragmentDirections.actionAddItemFragmentToItemListFragment()
+                findNavController().navigate(action)
+            } else {
+                Snackbar.make(binding.root, "Entered details is invalid", Snackbar.LENGTH_SHORT).show()
+            }
+        }
     }
 
     /**

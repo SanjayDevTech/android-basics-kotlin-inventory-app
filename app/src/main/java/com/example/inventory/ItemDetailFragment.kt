@@ -22,10 +22,15 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
+import com.example.inventory.data.formattedPrice
 import com.example.inventory.databinding.FragmentItemDetailBinding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 /**
  * [ItemDetailFragment] displays the details of the selected item.
@@ -36,13 +41,45 @@ class ItemDetailFragment : Fragment() {
     private var _binding: FragmentItemDetailBinding? = null
     private val binding get() = _binding!!
 
+    private val viewModel: ItemViewModel by activityViewModels {
+        ItemViewModelFactory(getDatabase().itemDao())
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
+    ): View {
         _binding = FragmentItemDetailBinding.inflate(inflater, container, false)
         return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        binding.deleteItem.setOnClickListener {
+            showConfirmationDialog()
+        }
+        binding.sellItem.setOnClickListener {
+            viewModel.sellItem(navigationArgs.itemId)
+        }
+        binding.editItem.setOnClickListener {
+            val action = ItemDetailFragmentDirections.actionItemDetailFragmentToAddItemFragment(
+                title = getString(R.string.edit_fragment_title),
+                itemId = navigationArgs.itemId,
+            )
+            findNavController().navigate(action)
+        }
+        lifecycleScope.launch {
+            viewModel.getItem(navigationArgs.itemId)
+                .collectLatest {
+                    binding.apply {
+                        itemCount.text = it.itemQuantity.toString()
+                        itemPrice.text = it.formattedPrice
+                        itemName.text = it.itemName
+                        sellItem.isEnabled = it.itemQuantity > 0
+                    }
+                }
+        }
     }
 
     /**
@@ -64,6 +101,7 @@ class ItemDetailFragment : Fragment() {
      * Deletes the current item and navigates to the list fragment.
      */
     private fun deleteItem() {
+        viewModel.deleteItem(navigationArgs.itemId)
         findNavController().navigateUp()
     }
 
